@@ -107,5 +107,31 @@ class ValidationErrorResponse(BaseModel):
     message: str = Field(..., description="Error message")
     errors: list[dict] = Field(..., description="Validation errors")
 
+class CrawlRequest(BaseModel):
+    url: str = Field(
+        ...,
+        description="URL to crawl",
+        min_length=1,
+    )
+    page_limit: int = Field(
+        default=50,
+        gt=0,
+        le=10000,
+        description="Maximum number of pages to crawl"
+    )
 
+    model_config = {
+        "json_schema_extra": {
+            "examples": [{
+                "url": "https://example.com",
+                "page_limit": 50
+            }]
+        }
+    }
 
+class CrawlResponse(BaseModel):
+    message: str = Field(..., description="Status message")
+    url: str = Field(..., description="Crawled URL")
+    pages_crawled: int = Field(..., description="Number of pages successfully crawled")
+    chunks_created: int = Field(..., description="Number of chunks stored in vector store")
+    document_ids: list[str] = Field(..., description="List of document IDs stored")

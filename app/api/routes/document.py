@@ -1,10 +1,11 @@
+import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, File, HTTPException, UploadFile
 from app.core.document_processor import DocumentProcessor
 from app.core.vector_store import VectorStoreService
 from app.utils.logger import get_logger
-from app.api.schemas import DocumentListResponse, DocumentUploadResponse, ErrorResponse
+from app.api.schemas import CrawlRequest, CrawlResponse, DocumentListResponse, DocumentUploadResponse, ErrorResponse
 
 logger = get_logger(__name__)
 router = APIRouter(prefix="/documents", tags=["Documents"])
@@ -108,4 +109,73 @@ async def delete_collection() -> dict:
         raise HTTPException(
             status_code=500,
             detail=f"Error deleting collection: {str(e)}"
+        )
+
+@router.post(
+    "/crawl",
+    response_model=CrawlResponse,
+    responses={
+        400: {"model": ErrorResponse, "description": "Invalid URL"},
+        500: {"model": ErrorResponse, "description": "Crawl error"}
+    },
+    summary="Crawl a website and ingest its content",
+    description="Crawl a website starting from the given URL, extract text content, and store it in the vector store for querying"
+)
+async def crawl_website(request: CrawlRequest) -> CrawlResponse:
+    try:
+        from web_crawler import Crawler, CrawlerConfig
+        from app.core.web_processor import WebContentProcessor
+
+        logger.info(f"Starting crawl of {request.url} with page_limit={request.page_limit}")
+
+        db_path = Path(tempfile.mkdtemp()) / "crawl.db"
+        config = CrawlerConfig(
+            url=request.url,
+            page_limit=request.page_limit,
+            db_path=db_path,
+        )
+
+        crawler = Crawler(config)
+        results = await crawler.crawl()
+
+        pages_crawled = sum(1 for r in results if r.status == "processed")
+        if pages_crawled == 0:
+            raise HTTPException(
+                status_code=400,
+                detail="No content could be crawled from the given URL"
+            )
+
+        processor = WebContentProcessor()
+        chunks = processor.process(results)
+
+        if not chunks:
+            raise HTTPException(
+                status_code=400,
+                detail="No content could be extracted from crawled pages"
+            )
+
+        vector_store = VectorStoreService()
+        document_ids = vector_store.add_docs(chunks)
+
+        logger.info(
+            f"Crawl complete: {request.url} — "
+            f"{pages_crawled} pages, {len(chunks)} chunks stored"
+        )
+
+        return CrawlResponse(
+            message="Website crawled and content stored successfully",
+            url=request.url,
+            pages_crawled=pages_crawled,
+            chunks_created=len(chunks),
+            document_ids=document_ids,
+        )
+
+    except HTTPException:
+        raise
+
+    except Exception as e:
+        logger.error(f"Error crawling website: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error crawling website: {str(e)}"
         )

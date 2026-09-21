@@ -25,7 +25,11 @@ dependencies = [
     "docling-parse>=7.18.0",
     "torch>=2.14.0",
     "torchvision>=0.29.0",
+    "web-crawler",
 ]
+
+[tool.uv.sources]
+web-crawler = { path = "../web-crawler" }
 
 [build-system]
 requires = ["hatchling"]

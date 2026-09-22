@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 os.environ.setdefault("GRPC_DNS_RESOLVER", "native")
 os.environ.setdefault("GRPC_ENABLE_FORK_SUPPORT", "0")
 
@@ -8,7 +9,7 @@ from dotenv import load_dotenv
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 
 from app.api.routes import document, health, query
 from app.config import get_settings
@@ -17,6 +18,8 @@ from app.utils.logger import get_logger, setup_logger
 
 load_dotenv()
 settings = get_settings()
+
+_STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -41,6 +44,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"]
 )
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return FileResponse(_STATIC_DIR / "index.html")
 
 app.include_router(health.router)
 app.include_router(document.router)
